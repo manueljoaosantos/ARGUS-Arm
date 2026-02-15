@@ -1,12 +1,26 @@
 #include <Servo.h>
 
-Servo servoBase;
-Servo servoOmbro;
-Servo servoCotovelo;
-Servo servoGarra;
+// =====================
+// PIN LED
+// =====================
+const int ledPin = 13;
 
-// ---- LIMITES ----
-const int ombroMin = 25;   
+// =====================
+// Estrutura de eixo
+// =====================
+struct ServoAxis {
+  Servo servo;
+  int posAtual;
+  int destino;
+  float velocidade;
+  float acumulador;
+  bool ativo;
+};
+
+// =====================
+// LIMITES
+// =====================
+const int ombroMin = 25;
 const int ombroMax = 60;
 
 const int cotoveloRecolhido = 30;
@@ -16,171 +30,213 @@ const int baseCenter = 90;
 const int baseLeft   = 25;
 const int baseRight  = 155;
 
-const int garraAberta = 40; 
+const int garraAberta  = 40;
 const int garraFechada = 90;
 
-const int ledPin = 13;
+// =====================
+// EIXOS
+// =====================
+ServoAxis base;
+ServoAxis ombro;
+ServoAxis cotovelo;
+ServoAxis garra;
 
-// ---- VELOCIDADE ----
-const int velocidadeServo = 70;
-const int alivioTorque = 2;
-
-// ---- POSIÇÕES REAIS ATUAIS ----
-int posBaseAtual;
-int posOmbroAtual;
-int posCotoveloAtual;
-int posGarraAtual;
-
-// ======================================================
-// 🔧 FUNÇÃO GENÉRICA COM CONTROLO REAL DE POSIÇÃO
-// ======================================================
-void moveServoProtegido(Servo &s, int &posAtual, int destino) {
-
-  int step = (destino > posAtual) ? 1 : -1;
-
-  while (posAtual != destino) {
-    posAtual += step;
-    s.write(posAtual);
-    delay(velocidadeServo);
-  }
-
-  // 🔒 Alívio de torque controlado
-  int posAlivio = posAtual - (step * alivioTorque);
-
-  if (posAlivio < 0) posAlivio = 0;
-  if (posAlivio > 180) posAlivio = 180;
-
-  s.write(posAlivio);
-  posAtual = posAlivio;
+// =====================
+// Inicialização eixo
+// =====================
+void initAxis(ServoAxis &a, int pin, int posInicial) {
+  a.servo.attach(pin);
+  a.posAtual = posInicial;
+  a.destino = posInicial;
+  a.velocidade = 0;
+  a.acumulador = 0;
+  a.ativo = false;
+  a.servo.write(posInicial);
 }
 
-// ======================================================
+// =====================
+// Movimento sincronizado grupo
+// =====================
+void iniciarMovimentoGrupo(int tempoTotalMs) {
+
+  int distBase = abs(base.destino - base.posAtual);
+  int distOmbro = abs(ombro.destino - ombro.posAtual);
+  int distCotovelo = abs(cotovelo.destino - cotovelo.posAtual);
+  int distGarra = abs(garra.destino - garra.posAtual);
+
+  int maxDist = max(max(distBase, distOmbro), max(distCotovelo, distGarra));
+  if (maxDist == 0) return;
+
+  float ciclos = tempoTotalMs / 10.0;
+
+  base.velocidade      = (float)distBase / ciclos;
+  ombro.velocidade     = (float)distOmbro / ciclos;
+  cotovelo.velocidade  = (float)distCotovelo / ciclos;
+  garra.velocidade     = (float)distGarra / ciclos;
+
+  base.acumulador = 0;
+  ombro.acumulador = 0;
+  cotovelo.acumulador = 0;
+  garra.acumulador = 0;
+
+  base.ativo = distBase > 0;
+  ombro.ativo = distOmbro > 0;
+  cotovelo.ativo = distCotovelo > 0;
+  garra.ativo = distGarra > 0;
+}
+
+// =====================
+// Atualização não bloqueante
+// =====================
+void atualizarAxis(ServoAxis &a) {
+
+  if (!a.ativo) return;
+  if (a.posAtual == a.destino) {
+    a.ativo = false;
+    return;
+  }
+
+  a.acumulador += a.velocidade;
+
+  while (a.acumulador >= 1.0) {
+    a.acumulador -= 1.0;
+
+    if (a.destino > a.posAtual)
+      a.posAtual++;
+    else
+      a.posAtual--;
+
+    a.servo.write(a.posAtual);
+
+    if (a.posAtual == a.destino) {
+      a.ativo = false;
+      break;
+    }
+  }
+}
+
+// =====================
+// Verifica movimento
+// =====================
+bool algumEixoAtivo() {
+  return base.ativo || ombro.ativo || cotovelo.ativo || garra.ativo;
+}
+
+// =====================
 // SETUP
-// ======================================================
+// =====================
 void setup() {
 
   pinMode(ledPin, OUTPUT);
 
-  // Tempo para ligar bateria
-  for (int i = 0; i < 20; i++) {
-    digitalWrite(ledPin, HIGH);
-    delay(250);
-    digitalWrite(ledPin, LOW);
-    delay(250);
-  }
-
-  servoBase.attach(2);
-  servoOmbro.attach(3);
-  servoCotovelo.attach(4);
-  servoGarra.attach(5); 
-
-  // Inicializa posições reais
-  posBaseAtual = baseCenter;
-  posOmbroAtual = ombroMin;
-  posCotoveloAtual = cotoveloRecolhido;
-  posGarraAtual = garraAberta;
-
-  servoBase.write(posBaseAtual);
-  servoOmbro.write(posOmbroAtual);
-  servoCotovelo.write(posCotoveloAtual);
-  servoGarra.write(posGarraAtual);
-
-  delay(1500);
+  initAxis(base, 2, baseCenter);
+  initAxis(ombro, 3, ombroMin);
+  initAxis(cotovelo, 4, cotoveloRecolhido);
+  initAxis(garra, 5, garraAberta);
 }
 
-// ======================================================
-// LOOP PRINCIPAL ESTÁVEL
-// ======================================================
+// =====================
+// Máquina de estados
+// =====================
+int estado = 0;
+unsigned long ultimo = 0;
+unsigned long ultimoLed = 0;
+bool estadoLed = false;
+
+// =====================
+// LOOP
+// =====================
 void loop() {
 
-  // =========================
-  // 🔹 1️⃣ CENTRO
-  // =========================
+  // Atualização servos a cada 10ms
+  if (millis() - ultimo >= 10) {
+    ultimo = millis();
 
-  // Compacta
-  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMin);
-  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloRecolhido);
-  delay(300);
+    atualizarAxis(base);
+    atualizarAxis(ombro);
+    atualizarAxis(cotovelo);
+    atualizarAxis(garra);
+  }
 
-  // Estende
-  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloEstendido);
-  delay(300);
+  // =====================
+  // LED
+  // =====================
+  if (algumEixoAtivo()) {
+    if (millis() - ultimoLed >= 200) {
+      ultimoLed = millis();
+      estadoLed = !estadoLed;
+      digitalWrite(ledPin, estadoLed);
+    }
+  } else {
+    digitalWrite(ledPin, HIGH);
+  }
 
-  // Desce
-  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMax);
-  delay(500);
+  // =====================
+  // Máquina de estados
+  // =====================
+  switch (estado) {
 
-  // 🔹 FECHA (apanha)
-  moveServoProtegido(servoGarra, posGarraAtual, garraFechada);
-  delay(500);
+    case 0:
+      base.destino = baseCenter;
+      ombro.destino = ombroMin;
+      cotovelo.destino = cotoveloRecolhido;
+      garra.destino = garraAberta;
+      iniciarMovimentoGrupo(1500);
+      estado = 1;
+      break;
 
-  // Sobe com objeto
-  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMin);
-  delay(400);
+    case 1:
+      if (!algumEixoAtivo()) {
+        base.destino = baseLeft;
+        ombro.destino = ombroMin;
+        cotovelo.destino = cotoveloEstendido;
+        iniciarMovimentoGrupo(2000);
+        estado = 2;
+      }
+      break;
 
+    case 2:
+      if (!algumEixoAtivo()) {
+        ombro.destino = ombroMax;
+        garra.destino = garraFechada;
+        iniciarMovimentoGrupo(1500);
+        estado = 3;
+      }
+      break;
 
-  // =========================
-  // 🔹 2️⃣ ESQUERDA
-  // =========================
+    case 3:
+      if (!algumEixoAtivo()) {
+        base.destino = baseCenter;
+        ombro.destino = ombroMin;
+        cotovelo.destino = cotoveloRecolhido;
+        iniciarMovimentoGrupo(2000);
+        estado = 4;
+      }
+      break;
 
-  // Compacta antes de rodar
-  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloRecolhido);
-  delay(300);
+    case 4:
+      if (!algumEixoAtivo()) {
+        base.destino = baseRight;
+        ombro.destino = ombroMin;
+        cotovelo.destino = cotoveloEstendido;
+        iniciarMovimentoGrupo(2000);
+        estado = 5;
+      }
+      break;
 
-  moveServoProtegido(servoBase, posBaseAtual, baseLeft);
-  delay(500);
+    case 5:
+      if (!algumEixoAtivo()) {
+        ombro.destino = ombroMax;
+        garra.destino = garraAberta;
+        iniciarMovimentoGrupo(1500);
+        estado = 6;
+      }
+      break;
 
-  // Estende
-  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloEstendido);
-  delay(300);
-
-  // Desce
-  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMax);
-  delay(500);
-
-  // 🔹 ABRE (larga)
-  moveServoProtegido(servoGarra, posGarraAtual, garraAberta);
-  delay(500);
-
-  // Sobe novamente
-  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMin);
-  delay(400);
-
-
-  // =========================
-  // 🔹 3️⃣ DIREITA
-  // =========================
-
-  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloRecolhido);
-  delay(300);
-
-  moveServoProtegido(servoBase, posBaseAtual, baseRight);
-  delay(500);
-
-  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloEstendido);
-  delay(300);
-
-  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMax);
-  delay(500);
-
-  // 🔹 FECHA novamente
-  moveServoProtegido(servoGarra, posGarraAtual, garraFechada);
-  delay(500);
-
-  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMin);
-  delay(400);
-
-  // =========================
-  // 🔹 VOLTA AO CENTRO
-  // =========================
-
-  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloRecolhido);
-  delay(300);
-
-  moveServoProtegido(servoBase, posBaseAtual, baseCenter);
-  delay(800);
-
-  // Abre para reiniciar ciclo
-  moveServoProtegido(servoGarra, posGarraAtual, garraAberta);
-  delay(1500);
+    case 6:
+      if (!algumEixoAtivo()) {
+        estado = 0;
+      }
+      break;
+  }
 }

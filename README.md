@@ -1,66 +1,73 @@
 # 🤖 ARGUS-Arm
 
-**ARGUS-Arm** é um braço robótico de 4 graus de liberdade baseado em Arduino Mega, projetado para executar movimentos sequenciais do tipo **pick-and-place com controlo cinemático estável e gestão real de estado dos servos**.
+**ARGUS-Arm** é um braço robótico de 4 graus de liberdade baseado em Arduino Mega, desenvolvido com arquitetura de controlo sincronizado multi-eixo e sistema não bloqueante baseado em `millis()`.
 
-Este projeto evoluiu de um simples controlo de servos para uma arquitetura estruturada com:
-
-- Controlo determinístico
-- Compactação mecânica antes de rotação
-- Sequência simétrica de trabalho
-- Gestão de posição real (sem saltos entre ciclos)
-- Base preparada para aceleração progressiva
+O projeto evoluiu de um simples controlo sequencial com `delay()` para um sistema coordenado inspirado em cinemática CNC e robótica industrial.
 
 ---
 
-## 🚀 Funcionalidades
+## 🚀 Funcionalidades Atuais
 
 - 4 Graus de Liberdade:
-  - Rotação da Base (amplitude configurável)
+  - Rotação da Base
   - Ombro
   - Cotovelo
   - Garra
-- Movimento automático tipo pick-and-place
-- Compactação automática antes de rotação
-- Gestão de posição real dos servos
-- Eliminação de saltos no reinício do ciclo
-- Alimentação externa dedicada aos servos (6V estabilizado)
-- Arquitetura modular preparada para aceleração suave
+- Movimento Pick-and-Place automatizado
+- Sincronização temporal real entre os 4 eixos
+- Chegada simultânea ao destino
+- Sistema não bloqueante com `millis()`
+- Máquina de estados estruturada
+- LED indicador de atividade
+- Arquitetura modular e escalável
 
 ---
 
 ## 🧠 Arquitetura de Controlo
 
-O sistema mantém o **estado real de cada servo**, evitando:
+### 🔄 Sistema Não Bloqueante
+O sistema utiliza atualização periódica baseada em `millis()` (10ms), permitindo:
 
-- Saltos no reinício do loop
-- Movimentos bruscos ao inverter direção
-- Torque excessivo durante rotação
-- Descida do ombro sob carga indevida
+- Movimentos simultâneos
+- Maior fluidez
+- Preparação para joystick, sensores ou IA
+- Eliminação total de `delay()`
 
-### Sequência de movimento otimizada:
+---
 
-Centro (trabalho)
-→ Esquerda (trabalho)
-→ Centro
-→ Direita (trabalho)
-→ Centro
+### 🎯 Sincronização Multi-Eixo
 
+Quando um movimento é iniciado:
 
-Sempre com:
-- Ombro elevado antes de rodar
-- Cotovelo recolhido antes de rodar
-- Descida controlada apenas após estabilização
+- A distância de cada eixo é calculada
+- A velocidade é ajustada proporcionalmente
+- Todos os eixos chegam ao destino exatamente no mesmo instante
+
+Este método é semelhante ao utilizado em:
+
+- CNC
+- Impressoras 3D
+- Robótica industrial
+
+---
+
+### 💡 LED Indicador
+
+- 🔵 Pisca durante movimento
+- 🟢 Fixo quando todos os eixos estão estáveis
+
+Permite diagnóstico visual rápido do estado do sistema.
 
 ---
 
 ## 🛠 Componentes Utilizados
 
-- Arduino Mega 2560  
-- 4x Servos MG996R  
-- Bateria LiPo 3S (11.1V 2000mAh 40C)  
-- Conversor DC Buck 10A ajustado para 6V  
-- Alimentação externa dedicada aos servos  
-- GND comum entre servos e Arduino  
+- Arduino Mega 2560
+- 4x Servos MG996R
+- Bateria LiPo 3S (11.1V 2000mAh 40C)
+- Conversor DC Buck 10A ajustado para 6V
+- Alimentação externa dedicada aos servos
+- GND comum entre servos e Arduino
 
 ---
 
@@ -72,6 +79,7 @@ Sempre com:
 | Ombro      | D3          |
 | Cotovelo   | D4          |
 | Garra      | D5          |
+| LED        | D13         |
 
 ---
 
@@ -79,8 +87,8 @@ Sempre com:
 
 - Servos alimentados por conversor Buck regulado para 6V
 - Arduino alimentado por USB
-- GND comum entre alimentação dos servos e Arduino
-- Bateria LiPo utilizada exclusivamente para os servos
+- GND comum obrigatório entre sistemas
+- Bateria LiPo usada exclusivamente para os servos
 
 ⚠️ Nunca alimentar servos diretamente pelo 5V do Arduino.
 
@@ -100,8 +108,6 @@ ARGUS-Arm/
 
 ## 📹 Demonstração
 
-ARGUS-Arm em funcionamento (Pick & Place automático):
-
 ▶ https://www.youtube.com/shorts/Esjhq-jKTh8
 
 Repositório oficial:
@@ -110,17 +116,27 @@ Repositório oficial:
 
 ---
 
+## 📈 Versão Atual
+
+**v1.1 – Synchronized Motion Engine**
+
+- Sistema não bloqueante
+- Sincronização dos 4 eixos
+- Máquina de estados
+- LED indicador de atividade
+
+---
+
 ## 🔮 Roadmap
 
-Próxima evolução planeada:
+Próximas evoluções:
 
-- Aceleração progressiva suave (perfil industrial)
-- Sistema não bloqueante (millis)
-- Modo manual por joystick
-- Gravação e reprodução de movimentos
+- Perfil S-curve industrial real
+- Planeamento por waypoints
+- Sistema híbrido Manual + Automático
 - Integração com Raspberry Pi
-- Visão computacional
-- Integração com IA (ARGUS Platform)
+- Sistema de visão artificial
+- Integração com Inteligência Artificial (ARGUS Platform)
 
 ---
 
