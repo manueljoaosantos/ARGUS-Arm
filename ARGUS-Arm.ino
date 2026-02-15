@@ -5,104 +5,182 @@ Servo servoOmbro;
 Servo servoCotovelo;
 Servo servoGarra;
 
-// ---- OMBRO ----
-const int ombroMin = 5;      // alto
-const int ombroMax = 50;     // baixo
+// ---- LIMITES ----
+const int ombroMin = 25;   
+const int ombroMax = 60;
 
-// ---- COTOVELO ----
 const int cotoveloRecolhido = 30;
 const int cotoveloEstendido = 90;
 
-// ---- BASE ----
 const int baseCenter = 90;
-const int baseLeft   = 45;
-const int baseRight  = 135;
+const int baseLeft   = 25;
+const int baseRight  = 155;
 
-// ---- GARRA ----
-const int garraAberta  = 40;
+const int garraAberta = 40; 
 const int garraFechada = 90;
 
-int pos;
+const int ledPin = 13;
 
+// ---- VELOCIDADE ----
+const int velocidadeServo = 70;
+const int alivioTorque = 2;
+
+// ---- POSIÇÕES REAIS ATUAIS ----
+int posBaseAtual;
+int posOmbroAtual;
+int posCotoveloAtual;
+int posGarraAtual;
+
+// ======================================================
+// 🔧 FUNÇÃO GENÉRICA COM CONTROLO REAL DE POSIÇÃO
+// ======================================================
+void moveServoProtegido(Servo &s, int &posAtual, int destino) {
+
+  int step = (destino > posAtual) ? 1 : -1;
+
+  while (posAtual != destino) {
+    posAtual += step;
+    s.write(posAtual);
+    delay(velocidadeServo);
+  }
+
+  // 🔒 Alívio de torque controlado
+  int posAlivio = posAtual - (step * alivioTorque);
+
+  if (posAlivio < 0) posAlivio = 0;
+  if (posAlivio > 180) posAlivio = 180;
+
+  s.write(posAlivio);
+  posAtual = posAlivio;
+}
+
+// ======================================================
+// SETUP
+// ======================================================
 void setup() {
-  delay(10000);
+
+  pinMode(ledPin, OUTPUT);
+
+  // Tempo para ligar bateria
+  for (int i = 0; i < 20; i++) {
+    digitalWrite(ledPin, HIGH);
+    delay(250);
+    digitalWrite(ledPin, LOW);
+    delay(250);
+  }
+
   servoBase.attach(2);
   servoOmbro.attach(3);
-  servoCotovelo.attach(5);
-  servoGarra.attach(4);
+  servoCotovelo.attach(4);
+  servoGarra.attach(5); 
 
-  // posição inicial segura
-  servoBase.write(baseCenter);
-  servoOmbro.write(ombroMin);
-  servoCotovelo.write(cotoveloRecolhido);
-  servoGarra.write(garraAberta);
+  // Inicializa posições reais
+  posBaseAtual = baseCenter;
+  posOmbroAtual = ombroMin;
+  posCotoveloAtual = cotoveloRecolhido;
+  posGarraAtual = garraAberta;
+
+  servoBase.write(posBaseAtual);
+  servoOmbro.write(posOmbroAtual);
+  servoCotovelo.write(posCotoveloAtual);
+  servoGarra.write(posGarraAtual);
 
   delay(1500);
 }
 
+// ======================================================
+// LOOP PRINCIPAL ESTÁVEL
+// ======================================================
 void loop() {
 
-  // 1️⃣ Ombro sobe
-  for (pos = ombroMax; pos >= ombroMin; pos--) {
-    servoOmbro.write(pos);
-    delay(30);
-  }
+  // =========================
+  // 🔹 1️⃣ CENTRO
+  // =========================
 
+  // Compacta
+  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMin);
+  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloRecolhido);
   delay(300);
 
-  // 2️⃣ Cotovelo estende
-  for (pos = cotoveloRecolhido; pos <= cotoveloEstendido; pos++) {
-    servoCotovelo.write(pos);
-    delay(25);
-  }
-
+  // Estende
+  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloEstendido);
   delay(300);
 
-  // 3️⃣ Base para direita (+45°)
-  for (pos = baseCenter; pos <= baseRight; pos++) {
-    servoBase.write(pos);
-    delay(25);
-  }
+  // Desce
+  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMax);
+  delay(500);
 
+  // 🔹 FECHA (apanha)
+  moveServoProtegido(servoGarra, posGarraAtual, garraFechada);
+  delay(500);
+
+  // Sobe com objeto
+  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMin);
   delay(400);
 
-  // 4️⃣ Garra fecha (apanha)
-  servoGarra.write(garraFechada);
+
+  // =========================
+  // 🔹 2️⃣ ESQUERDA
+  // =========================
+
+  // Compacta antes de rodar
+  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloRecolhido);
+  delay(300);
+
+  moveServoProtegido(servoBase, posBaseAtual, baseLeft);
+  delay(500);
+
+  // Estende
+  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloEstendido);
+  delay(300);
+
+  // Desce
+  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMax);
+  delay(500);
+
+  // 🔹 ABRE (larga)
+  moveServoProtegido(servoGarra, posGarraAtual, garraAberta);
+  delay(500);
+
+  // Sobe novamente
+  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMin);
+  delay(400);
+
+
+  // =========================
+  // 🔹 3️⃣ DIREITA
+  // =========================
+
+  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloRecolhido);
+  delay(300);
+
+  moveServoProtegido(servoBase, posBaseAtual, baseRight);
+  delay(500);
+
+  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloEstendido);
+  delay(300);
+
+  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMax);
+  delay(500);
+
+  // 🔹 FECHA novamente
+  moveServoProtegido(servoGarra, posGarraAtual, garraFechada);
+  delay(500);
+
+  moveServoProtegido(servoOmbro, posOmbroAtual, ombroMin);
+  delay(400);
+
+  // =========================
+  // 🔹 VOLTA AO CENTRO
+  // =========================
+
+  moveServoProtegido(servoCotovelo, posCotoveloAtual, cotoveloRecolhido);
+  delay(300);
+
+  moveServoProtegido(servoBase, posBaseAtual, baseCenter);
   delay(800);
 
-  // 5️⃣ Base para esquerda (-90° total)
-  for (pos = baseRight; pos >= baseLeft; pos--) {
-    servoBase.write(pos);
-    delay(25);
-  }
-
-  delay(400);
-
-  // 6️⃣ Garra abre (larga)
-  servoGarra.write(garraAberta);
-  delay(800);
-
-  // 7️⃣ Base volta ao centro
-  for (pos = baseLeft; pos <= baseCenter; pos++) {
-    servoBase.write(pos);
-    delay(25);
-  }
-
-  delay(400);
-
-  // 8️⃣ Cotovelo recolhe
-  for (pos = cotoveloEstendido; pos >= cotoveloRecolhido; pos--) {
-    servoCotovelo.write(pos);
-    delay(25);
-  }
-
-  delay(300);
-
-  // 9️⃣ Ombro desce
-  for (pos = ombroMin; pos <= ombroMax; pos++) {
-    servoOmbro.write(pos);
-    delay(45);
-  }
-
-  delay(2500);
+  // Abre para reiniciar ciclo
+  moveServoProtegido(servoGarra, posGarraAtual, garraAberta);
+  delay(1500);
 }
